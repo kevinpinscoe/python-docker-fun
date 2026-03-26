@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kevin-testing-loop-messages
+  labels:
+    app: loop-test
+spec:
+  replicas: 111
+  selector:
+    matchLabels:
+      app: kevin-test
+  template:
+    metadata:
+      labels:
+        app: kevin-test
+    spec:
+      containers:
+      - name: kevin-test-loop-python
+       image: ghcr.io/kevinpinscoe/kevin_test_loop_python:1.0
+       imagePullPolicy: Always

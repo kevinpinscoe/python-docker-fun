@@ -1,37 +1,79 @@
-# This workflow will install Python dependencies and build a container
-# to be published on my public packages deployable as a k8s pod
-
-name: Docker build container for python-docker-fun
+name: build-and-push
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+    tags:
+      - 'v*.*.*'
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      # Required for Cosign keyless (OIDC token exchange with Sigstore)
+      id-token: write
 
     steps:
-     - name: login to GitHub Container Registry
-       uses: docker/login-action@v1
-       with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-     - name: Set up Python 3.11
-       uses: actions/setup-python@v4
-       with:
-        python-version: "3.11"
-     - uses: actions/checkout@v3
-     - name: Build the Docker image
-       run: docker build . --file Dockerfile --tag kevin_test_loop_python:1.0
-     - name: Tag the Docker image
-       run: docker tag kevin_test_loop_python:1.0 ghcr.io/${{ github.actor }}/kevin_test_loop_python:1.0
-     - name: Push the Docker image to the registry
-       run: docker push ghcr.io/${{ github.actor }}/kevin_test_loop_python:1.0
+      - uses: actions/checkout@v4
+
+      # Buildx is required for multi-platform builds (BuildKit)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Generate tags/labels:
+      # - branch name on branch pushes
+      # - v1.0.1 (exact tag) and latest on tag pushes
+      # - sha-... (immutable traceability)
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=sha
+
+      # GHCR login -- skipped on PRs (no write access from forks)
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build (and push on non-PR runs)
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ github.repository }}
+          cache-to: type=gha,mode=max,scope=${{ github.repository }}
+
+      # Sign the published image with Cosign keyless (OIDC -> Sigstore transparency log)
+      # Only runs when an image was actually pushed (not on PRs)
+      - name: Install Cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with Cosign
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images="${images} ${tag}@${DIGEST}"
+          done
+          cosign sign --yes ${images}

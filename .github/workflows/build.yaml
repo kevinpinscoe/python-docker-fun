@@ -51,7 +51,7 @@ jobs:
       # Build (and push on non-PR runs)
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}

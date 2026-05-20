@@ -1,0 +1,17 @@
+# OS and editor artifacts
+**/.DS_Store
+**/Thumbs.db
+**/.claude
+**/.codex
+**/.trash/
+**/*.swp
+# AI resume files
+resume.sh
+resume.txt
+# Python artifacts
+**/*.pyc
+**/*.pyo
+**/__pycache__/
+# Environment secrets
+.env
+.env.*

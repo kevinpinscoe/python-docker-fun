@@ -2,6 +2,8 @@
 
 A collection of scripts I use when debugging Kubernetes pods and sometimes local containers. Built on Python 3.13.
 
+Originally written as a simple debugging loop, this repo has since been modernized with a current CI/CD workflow, GHCR publishing, Cosign image signing, updated manifests, and an improved Python script with graceful shutdown, pod metadata logging, and an HTTP health endpoint.
+
 ## Running from GHCR
 
 The image is published to GitHub Container Registry automatically. Build triggers:
@@ -34,6 +36,20 @@ cosign verify \
   --certificate-identity-regexp 'https://github.com/kevinpinscoe/python-docker-fun/.github/workflows/build.yaml@refs/heads/main' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   ghcr.io/kevinpinscoe/python-docker-fun:latest
+```
+
+## Features
+
+- **Timestamped loop** — prints version, iteration counter, and UTC timestamp every 60 seconds
+- **Pod metadata** — logs `POD_NAME`, `POD_NAMESPACE`, and `NODE_NAME` on startup and in each line (injected via the k8s downward API)
+- **HTTP health endpoint** — listens on `:8080/health`, returns `200 ok`; wired to liveness and readiness probes in the k8s manifests
+- **Graceful shutdown** — catches `SIGTERM` and `SIGINT`, exits cleanly without waiting for the next 60-second tick
+
+To hit the health endpoint locally:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/kevinpinscoe/python-docker-fun:latest
+curl http://localhost:8080/health
 ```
 
 ## Repository Layout

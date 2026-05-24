@@ -5,5 +5,5 @@ metadata:
 spec:
   containers:
     - name: kevin-test-loop-python
-      image: ghcr.io/kevinpinscoe/kevin_test_loop_python:1.0
+      image: ghcr.io/kevinpinscoe/python-docker-fun:latest
       imagePullPolicy: Always

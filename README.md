@@ -26,17 +26,19 @@ Available tags:
 |---|---|
 | `latest` | Every version tag push |
 | `main` | Every push to the `main` branch |
-| `v1.2.3` | Exact version tag (semver) |
+| `v4.0.0` | Current release (semver tag) |
 | `sha-<digest>` | Every push (immutable, for pinning) |
 
 Images are signed with Cosign keyless signing. To verify:
 
 ```bash
 cosign verify \
-  --certificate-identity-regexp 'https://github.com/kevinpinscoe/python-docker-fun/.github/workflows/build.yaml@refs/heads/main' \
+  --certificate-identity-regexp 'https://github.com/kevinpinscoe/python-docker-fun/.github/workflows/build.yaml@refs/.*' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   ghcr.io/kevinpinscoe/python-docker-fun:latest
 ```
+
+Replace `latest` with any tag (e.g. `v4.0.0`) to verify a specific release.
 
 ## Features
 

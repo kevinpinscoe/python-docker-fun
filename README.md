@@ -36,6 +36,24 @@ cosign verify \
   ghcr.io/kevinpinscoe/python-docker-fun:latest
 ```
 
+## Repository Layout
+
+```
+python-docker-fun/
+├── .github/
+│   ├── dependabot.yml                     # automated dependency updates
+│   └── workflows/
+│       └── build.yaml                     # build, push, and sign to GHCR
+├── Dockerfile                             # Python 3.13 container image
+├── python_loop_output.py                  # main loop script
+├── python_loop_output_deployment.yaml     # k8s Pod manifest (loop container)
+├── python_loop_output_load_test.yaml      # k8s load test manifest
+├── nginx.yaml                             # k8s nginx Deployment (150 replicas)
+├── build_python_loop_output.sh            # local build/push script (reference)
+├── .gitignore
+└── README.md
+```
+
 ## Kubernetes
 
 To apply the loop to a k8s cluster:

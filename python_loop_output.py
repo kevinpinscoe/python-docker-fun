@@ -8,7 +8,7 @@ import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "3.0"
+version = "4.0"
 
 POD_NAME      = os.getenv("POD_NAME", "unknown")
 POD_NAMESPACE = os.getenv("POD_NAMESPACE", "unknown")

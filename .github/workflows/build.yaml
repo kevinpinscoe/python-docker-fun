@@ -18,11 +18,11 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Buildx is required for multi-platform builds (BuildKit)
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       # Generate tags/labels:
       # - branch name on branch pushes
@@ -30,7 +30,7 @@ jobs:
       # - sha-... (immutable traceability)
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -42,7 +42,7 @@ jobs:
       # GHCR login -- skipped on PRs (no write access from forks)
       - name: Login to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -51,7 +51,7 @@ jobs:
       # Build (and push on non-PR runs)
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -64,7 +64,7 @@ jobs:
       # Only runs when an image was actually pushed (not on PRs)
       - name: Install Cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign image with Cosign
         if: github.event_name != 'pull_request'

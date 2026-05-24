@@ -1,6 +1,6 @@
 # Python Docker Fun
 
-A collection of scripts I use when debugging Kubernetes pods and sometimes local containers.
+A collection of scripts I use when debugging Kubernetes pods and sometimes local containers. Built on Python 3.13.
 
 ## Running from GHCR
 

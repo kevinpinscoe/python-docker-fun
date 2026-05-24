@@ -36,3 +36,9 @@ To apply the loop to a k8s cluster:
 ```bash
 kubectl apply -f python_loop_output_deployment.yaml
 ```
+
+An nginx deployment (`nginx:1.30.2`) is also included for load-testing alongside the loop. It runs 150 replicas and exposes port 80:
+
+```bash
+kubectl apply -f nginx.yaml
+```

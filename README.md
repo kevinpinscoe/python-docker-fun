@@ -4,7 +4,14 @@ A collection of scripts I use when debugging Kubernetes pods and sometimes local
 
 ## Running from GHCR
 
-The image is published to GitHub Container Registry on every push to `main` and on version tags.
+The image is published to GitHub Container Registry automatically. Build triggers:
+
+| Event | Tags published |
+|---|---|
+| Push to `main` | `main`, `latest`, `sha-<digest>` |
+| Push of `v*.*.*` tag | `v1.2.3`, `latest`, `sha-<digest>` |
+| Pull request to `main` | build only — no image pushed |
+
 
 ```bash
 docker pull ghcr.io/kevinpinscoe/python-docker-fun:latest

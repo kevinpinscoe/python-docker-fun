@@ -67,3 +67,9 @@ An nginx deployment (`nginx:1.30.2`) is also included for load-testing alongside
 ```bash
 kubectl apply -f nginx.yaml
 ```
+
+To run a higher-replica load test of the loop container (111 replicas):
+
+```bash
+kubectl apply -f python_loop_output_load_test.yaml
+```

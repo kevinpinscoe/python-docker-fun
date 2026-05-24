@@ -1,14 +1,12 @@
 #!/bin/bash -v
 
-# This script is a local build for kevin_test_loop_python binary for
-# pod and container testing
+# Local build script for python-docker-fun — kept for reference.
+# CI (build.yaml) handles builds and pushes automatically on main and version tags.
 
-version="1.0"
+image="ghcr.io/kevinpinscoe/python-docker-fun"
+version="${1:-latest}"
 
-docker build -t kevin_test_loop_python:${version} -f Dockerfile .
-image_id=$(docker images | grep kevin_test_loop_python | grep "${version}" | awk '{ print $3 }')
-echo "Image ID: ${image_id}"
-docker tag "${image_id}" ghcr.io/kevinpinscoe/kevin_test_loop_python:latest
-GITHUB_TOKEN=<github-token>
-echo $GITHUB_TOKEN | docker login ghcr.io -u <Github login> --password-stdin
-docker push ghcr.io/kevinpinscoe/kevin_test_loop_python:latest
+docker build -t "${image}:${version}" -f Dockerfile .
+echo "Image ID: $(docker images -q "${image}:${version}")"
+gh auth token | docker login ghcr.io -u kevinpinscoe --password-stdin
+docker push "${image}:${version}"

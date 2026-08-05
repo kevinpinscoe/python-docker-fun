@@ -12,10 +12,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # write, not read: on tag builds the SBOM step creates the GitHub release if
+      # one does not exist, then uploads the SPDX document to it
+      contents: write
       packages: write
       # Required for Cosign keyless (OIDC token exchange with Sigstore)
       id-token: write
+      # Required to upload the Grype SARIF report to the Security tab
+      security-events: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,6 +63,45 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ github.repository }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
+          # Bind an SPDX SBOM and SLSA provenance to the pushed digest. Registry
+          # attestations on the manifest list, not files — they require the
+          # docker-container driver (setup-buildx-action's default) and a push, so
+          # they only materialise on the non-PR runs that actually push.
+          #
+          # No BUILDKIT_SBOM_SCAN_STAGE here: the Dockerfile is a single stage, so
+          # everything the image contains is in the final stage already. Add it if
+          # this ever becomes a multi-stage build.
+          sbom: true
+          provenance: mode=max
+
+      # Scan the published digest and report. WARN ONLY, deliberately.
+      #
+      # Measured 2026-08-04 before this step existed: this image carries 444 findings
+      # at or above high (91 critical, 353 high) out of 1949 total. It is the full
+      # python:3.14 Debian image, and essentially all of that is inherited — some of
+      # it a decade old. fail-build: true would mean this repo could never publish.
+      #
+      # The honest fix is a smaller base (slim or distroless), not a louder gate.
+      # Until then this reports. When the baseline is addressed, flip fail-build to
+      # true — do not raise severity-cutoff to hide findings, and do not delete the
+      # step. A CVE that genuinely does not affect the image is dispositioned with an
+      # OpenVEX statement at .vex/openvex.json passed to the vex: input.
+      - name: Scan the published image for CVEs
+        id: scan
+        if: github.event_name != 'pull_request'
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          severity-cutoff: high
+          fail-build: false
+          output-format: sarif
+
+      - name: Upload the scan results
+        if: always() && steps.scan.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+          category: grype-container
 
       # Sign the published image with Cosign keyless (OIDC -> Sigstore transparency log)
       # Only runs when an image was actually pushed (not on PRs)
@@ -77,3 +120,57 @@ jobs:
             images="${images} ${tag}@${DIGEST}"
           done
           cosign sign --yes ${images}
+
+      # Export the SBOM attestation as a release record. Tag builds only — a branch
+      # push has no release to attach to.
+      #
+      # The registry attestation is the source of truth; this file is a convenience
+      # copy for reading the inventory without a registry client, and the two can
+      # drift. The platform key shape is asserted rather than assumed: this build is
+      # currently single-platform, so rather than hardcode linux/amd64 the step reads
+      # whatever keys are actually present and fails loudly on none.
+      - name: Export the SBOM as a release record
+        if: github.ref_type == 'tag'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ github.repository }}@${DIGEST}"
+          docker buildx imagetools inspect "$IMAGE" --format '{{ json .SBOM }}' > sbom-raw.json
+
+          echo "SBOM top-level keys:"
+          jq -r 'keys[]' sbom-raw.json
+
+          # Single-platform builds key the SPDX document at the top level;
+          # multi-platform builds key it per platform. Handle both.
+          if jq -e '.SPDX' sbom-raw.json >/dev/null 2>&1; then
+            jq '.SPDX' sbom-raw.json > sbom.spdx.json
+            echo "sbom.spdx.json: $(jq '.packages | length' sbom.spdx.json) packages"
+          else
+            for plat in $(jq -r 'keys[]' sbom-raw.json); do
+              out="sbom.${plat//\//-}.spdx.json"
+              jq -e --arg p "$plat" '.[$p].SPDX' sbom-raw.json > "$out"
+              echo "$out: $(jq '.packages | length' "$out") packages"
+            done
+          fi
+
+          # An empty SBOM looks exactly like a passing one. Fail rather than publish
+          # a document that asserts an image contains nothing.
+          for f in sbom*.spdx.json; do
+            [ "$(jq '.packages | length' "$f")" -gt 0 ] || { echo "::error::$f is empty"; exit 1; }
+          done
+
+      # This repo publishes tags but has never created a GitHub release, so there is
+      # nothing for `gh release upload` to attach to. Create it first.
+      - name: Attach the SBOM to the GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "No release for $TAG — creating one."
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" sbom*.spdx.json --clobber

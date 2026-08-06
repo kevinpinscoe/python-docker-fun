@@ -150,7 +150,11 @@ jobs:
           # only .SPDX is the bug that shipped in the multi-stage repos on 2026-08-05,
           # dropping 479 packages from pastebooks and 1815 from eng-tools. Handled
           # here now so it cannot reappear the day this becomes multi-stage.
-          export_doc() {   # $1 = jq path to the container, $2 = output prefix
+          # $1 = jq path PREFIX to the container — empty string for the document root,
+          #      or .["<platform>"]. Not "." for the root: "$1.SPDX" would then render
+          #      as "..SPDX", which is a jq syntax error. That shipped in v4.0.2.
+          # $2 = output filename prefix
+          export_doc() {
             jq -e "$1.SPDX" sbom-raw.json > "$2.spdx.json"
             echo "$2.spdx.json: $(jq '.packages | length' "$2.spdx.json") packages"
             n=$(jq "$1.AdditionalSPDXs? // [] | length" sbom-raw.json)
@@ -164,7 +168,7 @@ jobs:
           }
 
           if jq -e '.SPDX' sbom-raw.json >/dev/null 2>&1; then
-            export_doc '.' sbom
+            export_doc '' sbom
           else
             for plat in $(jq -r 'keys[]' sbom-raw.json); do
               export_doc ".[\"$plat\"]" "sbom.${plat//\//-}"

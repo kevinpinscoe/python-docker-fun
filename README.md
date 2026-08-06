@@ -121,17 +121,26 @@ attestation is the source of truth**, and the two can drift.
 The release workflow scans the pushed digest with Grype at `severity-cutoff: high`,
 uploads the result to the **Security** tab, and does **not** fail the build.
 
-Measured 2026-08-04: this image carries **444 findings at or above high** (91
-critical, 353 high) out of **1,949** total. That is not a backlog to work through —
-it is what `FROM python:3.14` contains. The Dockerfile is a single stage that copies
-one script into the full Debian-based Python image, so essentially every finding is
-inherited, some of it dating to 2009.
+**The base image was changed to `python:3.14-slim` on 2026-08-06, and that did most
+of the work:**
 
-**The honest fix is a smaller base image, not a stricter gate.** `python:3.14-slim`
-or a distroless Python would remove most of this at a stroke. Until that happens,
-turning on `fail-build: true` would only mean the repo can never publish.
+| | Findings | High + Critical |
+|---|---|---|
+| `python:3.14` (until 2026-08-05) | 1,949 | 444 |
+| `python:3.14-slim` (2026-08-06 →) | **177** | **30** |
 
-When the base is addressed, flip `fail-build` to `true` in
+`python_loop_output.py` imports nothing outside the standard library, so the full
+Debian image was contributing a compiler toolchain, dev headers and assorted
+libraries this container never executes — and every CVE in them. Roughly 91% of the
+findings, and 93% of the blocking ones, were removed by deleting software that was
+never used.
+
+**30 blocking findings is still not zero**, so the gate stays warn-only for now — but
+it is now in the same range as the other two images in this fleet (29 and 44) rather
+than an order of magnitude worse. A distroless Python would cut it further; the
+remaining findings are in the Debian slim base, not in anything this repo wrote.
+
+When that residue is triaged, flip `fail-build` to `true` in
 `.github/workflows/build.yaml`. Do not raise `severity-cutoff` to make findings
 disappear, and do not delete the step. A CVE that genuinely does not affect this
 image is dispositioned with an OpenVEX statement at `.vex/openvex.json`, committed
@@ -147,8 +156,8 @@ An SBOM is an inventory, not a clean bill of health. For this image specifically
   `BUILDKIT_SBOM_SCAN_STAGE=true` or their dependencies vanish from the attestation.
 - **`python_loop_output.py` is `COPY`'d in** without package metadata and will not
   appear as a component.
-- **Being listed is not being reachable.** Most of the 1,949 findings are in Debian
-  packages this container never executes.
+- **Being listed is not being reachable.** The remaining findings are in Debian slim
+  base packages this container never executes.
 - **Generators disagree.** Two SBOMs of this image, from different tools, will not
   match line for line.
 

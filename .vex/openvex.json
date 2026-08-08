@@ -1,0 +1,59 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/kevinpinscoe/python-docker-fun/.vex/openvex.json",
+  "author": "Kevin P. Inscoe <kevin.inscoe@gmail.com>",
+  "role": "Maintainer",
+  "timestamp": "2026-08-08T01:16:02Z",
+  "version": 1,
+  "tooling": "hand-authored; findings measured with grype 0.116.1",
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-11940",
+        "description": "tarfile.extractall() with the 'data' or 'tar' filter could be bypassed by a crafted archive where a hardlink references a symlink stored at a deeper name than the hardlink itself, allowing extraction outside the destination directory."
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/python-docker-fun"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "This image runs a single script, python_loop_output.py, which never imports tarfile and never reads an archive of any kind. Verified empirically inside the image rather than by inspection: importing exactly the application's import set (os, signal, threading, datetime, http.server) loads 116 modules, and 'tarfile' is not among them. The image also accepts no file uploads and reads no archives at runtime; its only route is GET /health. The vulnerable code ships as part of the CPython standard library but is never loaded or reached.",
+      "action_statement": "Re-review if the application ever imports tarfile, shutil.unpack_archive, or any library that extracts archives. Superseded when the base image reaches CPython 3.15.0b4 or later, which fixes this upstream.",
+      "timestamp": "2026-08-08T01:16:02Z"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-11972",
+        "description": "When using the tarfile module with a file opened in streaming mode (mode='r|'), tarfile did not properly handle EOF, making archive parsing take exponentially longer."
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/python-docker-fun"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Same basis as CVE-2026-11940 and verified in the same run: tarfile is never imported by this image's application, and 'tarfile' does not appear in the 116 modules loaded by its import set. The image never opens an archive in any mode. The vulnerable code is present in the standard library and unreachable.",
+      "action_statement": "Re-review if the application ever imports tarfile. Superseded when the base image reaches CPython 3.15.0b4 or later.",
+      "timestamp": "2026-08-08T01:16:02Z"
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-15308",
+        "description": "The incremental HTML parser (html.parser.HTMLParser) allows for CPU denial-of-service through repeated unterminated markup declarations when processing uncontrolled data."
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/python-docker-fun"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The application never imports html.parser and never parses HTML. This one warranted an explicit check because http.server does import the 'html' package for html.escape, which could plausibly have dragged in the parser: it does not. Verified inside the image that after importing the application's full import set, 'html' is loaded and 'html.parser' is not \u2014 html/__init__.py does not import its parser submodule. The server also emits responses and parses none; it accepts no HTML input on any route.",
+      "action_statement": "Re-review if the application ever imports html.parser, or adds a dependency that parses HTML. Superseded when the base image reaches CPython 3.15.0, which fixes this upstream.",
+      "timestamp": "2026-08-08T01:16:02Z"
+    }
+  ]
+}

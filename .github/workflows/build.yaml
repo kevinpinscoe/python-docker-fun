@@ -74,18 +74,29 @@ jobs:
           sbom: true
           provenance: mode=max
 
-      # Scan the published digest and report. WARN ONLY, deliberately.
+      # Scan the published digest.
       #
-      # Measured 2026-08-04 before this step existed: this image carries 444 findings
-      # at or above high (91 critical, 353 high) out of 1949 total. It is the full
-      # python:3.14 Debian image, and essentially all of that is inherited — some of
-      # it a decade old. fail-build: true would mean this repo could never publish.
+      # BLOCKING as of 2026-08-08, after the findings were reduced and the residue
+      # dispositioned. The path taken, in order — reduce first, assert only last:
       #
-      # The honest fix is a smaller base (slim or distroless), not a louder gate.
-      # Until then this reports. When the baseline is addressed, flip fail-build to
-      # true — do not raise severity-cutoff to hide findings, and do not delete the
-      # step. A CVE that genuinely does not affect the image is dispositioned with an
-      # OpenVEX statement at .vex/openvex.json passed to the vex: input.
+      #   python:3.14           1949 findings   444 high or critical
+      #   python:3.14-slim       177 findings    30
+      #   python:3.14-alpine      12 findings     3
+      #   + .vex/openvex.json                     0 unsuppressed
+      #
+      # The final 3 are in CPython itself (tarfile x2, html.parser) and are fixed only
+      # in 3.15.0b4/3.15.0 — an unreleased major version — so no base change removes
+      # them. Every alternative was measured and is worse: Alpine's apk python3 ships
+      # 3.14.5 (5 blocking) and distroless/python3 is 3.11 on Debian 12 (55 blocking).
+      #
+      # They are dispositioned as not_affected / vulnerable_code_not_in_execute_path,
+      # on evidence rather than assertion: the app's import set loads 116 modules and
+      # neither tarfile nor html.parser is among them. See .vex/openvex.json for the
+      # per-CVE reasoning and the conditions that void each statement.
+      #
+      # If this starts failing, the finding is NEW and real. Fix it, remove the
+      # package, or change the base. Do NOT raise severity-cutoff, do NOT delete this
+      # step, and do NOT add a VEX statement without evidence the code is unreachable.
       - name: Scan the published image for CVEs
         id: scan
         if: github.event_name != 'pull_request'
@@ -93,7 +104,8 @@ jobs:
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
           severity-cutoff: high
-          fail-build: false
+          fail-build: true
+          vex: .vex/openvex.json
           output-format: sarif
 
       - name: Upload the scan results

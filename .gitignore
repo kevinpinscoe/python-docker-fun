@@ -15,3 +15,7 @@ resume.txt
 # Environment secrets
 .env
 .env.*
+# AI project worktrees. These live inside the repo, so without this rule every
+# file in one shows up as untracked here and could be committed to main by
+# accident — the exact mistake the worktree exists to prevent.
+**/ai-wt/

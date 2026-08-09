@@ -109,6 +109,7 @@ cosign verify "$IMG" \
   --certificate-identity-regexp='.*' \
   --certificate-oidc-issuer-regexp='.*'
 
+# NOTE: this will show three high findings that the gate does not. See below.
 grype "$IMG"
 ```
 
@@ -116,35 +117,70 @@ On tag builds the SPDX document is also attached to the GitHub release. That cop
 a convenience for reading the inventory without a registry client — **the registry
 attestation is the source of truth**, and the two can drift.
 
-### The CVE gate reports, it does not block — and this image is why
+### Scanning this image yourself shows three findings the gate does not
+
+**This is the one thing to know before scanning this image locally.** A plain
+`grype "$IMG"` reports **three high-severity CVEs**. The release gate reports zero and
+passes. Neither number is wrong, and the difference is not drift:
+
+```bash
+IMG=ghcr.io/kevinpinscoe/python-docker-fun:latest
+
+grype "$IMG"                          # 3 high findings
+grype "$IMG" --vex .vex/openvex.json  # 0 — what the gate actually sees
+```
+
+The three are dispositioned in an OpenVEX document at `.vex/openvex.json`, committed in
+this repository and reviewable. The workflow passes it to Grype's `vex:` input; your
+local run does not unless you say so. Run the second command from a checkout of this
+repo to reproduce the gate exactly.
+
+They are the only suppressions here, and each is temporary by construction — every
+statement names the CPython release that supersedes it:
+
+| CVE | Where | Why it does not affect this image |
+|---|---|---|
+| CVE-2026-11940 | `tarfile` | Never imported; the image reads no archives. |
+| CVE-2026-11972 | `tarfile` | Same. |
+| CVE-2026-15308 | `html.parser` | Never imported; the server emits HTML and parses none. |
+
+This was not assumed from reading the source. It was measured inside the image:
+importing exactly the application's import set (`os`, `signal`, `threading`,
+`datetime`, `http.server`) loads 116 modules, and neither `tarfile` nor `html.parser`
+is among them. `html.parser` was checked explicitly because `http.server` *does* import
+`html` for `escape` and could plausibly have dragged the parser in — it does not.
+
+All three are fixed only in CPython 3.15.0b4/3.15.0, an unreleased major version, so no
+base-image change removes them. Every alternative was built and scanned rather than
+guessed: Alpine's `apk python3` ships 3.14.5 with 5 blocking findings,
+`distroless/python3` is CPython 3.11 on Debian 12 with 55, and `3.15.0rc1` still leaves
+one while shipping a release candidate to a public registry. **When the base reaches
+3.15 stable, delete `.vex/openvex.json`** — the gate then stands on a genuinely empty
+baseline.
+
+### The CVE gate blocks
 
 The release workflow scans the pushed digest with Grype at `severity-cutoff: high`,
-uploads the result to the **Security** tab, and does **not** fail the build.
+uploads the result to the **Security** tab, and **fails the build** on any unsuppressed
+finding at or above high. One is enough — `fail-build: true` is not a count threshold.
 
-**The base image was changed to `python:3.14-slim` on 2026-08-06, and that did most
-of the work:**
+Getting to a blockable baseline took two base-image changes, each measured:
 
-| | Findings | High + Critical |
+| Base | Findings | High + Critical |
 |---|---|---|
 | `python:3.14` (until 2026-08-05) | 1,949 | 444 |
-| `python:3.14-slim` (2026-08-06 →) | **177** | **30** |
+| `python:3.14-slim` (2026-08-06) | 177 | 30 |
+| `python:3.14-alpine` (2026-08-07 →) | **12** | **3, all suppressed → 0** |
 
-`python_loop_output.py` imports nothing outside the standard library, so the full
-Debian image was contributing a compiler toolchain, dev headers and assorted
-libraries this container never executes — and every CVE in them. Roughly 91% of the
-findings, and 93% of the blocking ones, were removed by deleting software that was
-never used.
+`python_loop_output.py` imports nothing outside the standard library, so the full Debian
+image was contributing a compiler toolchain, dev headers and assorted libraries this
+container never executes — and every CVE in them. Almost all of the reduction came from
+deleting software that was never used, not from waiving anything.
 
-**30 blocking findings is still not zero**, so the gate stays warn-only for now — but
-it is now in the same range as the other two images in this fleet (29 and 44) rather
-than an order of magnitude worse. A distroless Python would cut it further; the
-remaining findings are in the Debian slim base, not in anything this repo wrote.
-
-When that residue is triaged, flip `fail-build` to `true` in
-`.github/workflows/build.yaml`. Do not raise `severity-cutoff` to make findings
-disappear, and do not delete the step. A CVE that genuinely does not affect this
-image is dispositioned with an OpenVEX statement at `.vex/openvex.json`, committed
-and reviewable — there is none today because nothing is being blocked.
+Do not raise `severity-cutoff` to make findings disappear, and do not delete the scan
+step. A CVE that genuinely does not affect this image is dispositioned with an OpenVEX
+statement, committed and reviewable, and only with evidence that the vulnerable code is
+unreachable.
 
 ### What the SBOM does not tell you
 
@@ -156,14 +192,18 @@ An SBOM is an inventory, not a clean bill of health. For this image specifically
   `BUILDKIT_SBOM_SCAN_STAGE=true` or their dependencies vanish from the attestation.
 - **`python_loop_output.py` is `COPY`'d in** without package metadata and will not
   appear as a component.
-- **Being listed is not being reachable.** The remaining findings are in Debian slim
-  base packages this container never executes.
+- **Being listed is not being reachable.** That is the entire basis of the three VEX
+  statements above: the vulnerable code ships inside CPython's standard library and is
+  never loaded by this application.
 - **Generators disagree.** Two SBOMs of this image, from different tools, will not
   match line for line.
 
-**Known gap:** this image is built for the runner's platform only (`linux/amd64`),
-so unlike the multi-arch images in this fleet there is no arm64 variant to scan —
-but equally, an arm64 consumer has nothing to pull.
+**Single-platform, by design.** This image is built for `linux/amd64` only, so unlike
+the multi-arch images in this fleet there is no arm64 variant to scan — and equally, an
+arm64 consumer has nothing to pull. The sibling repos (`pastebooks`, `eng-tools`) are
+multi-arch and scan each platform's digest separately, because Grype resolves a manifest
+list to the runner's own platform and would otherwise check only one. That distinction
+does not arise here.
 
 **Rebuild trigger:** a digest's CVE posture is frozen at build time and only
 degrades. Cut a new release when the base image updates.

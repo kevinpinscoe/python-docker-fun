@@ -18,7 +18,7 @@
 # The 3 that remain are in CPython itself and are fixed only in 3.15.0/3.15.0b4, a
 # future major version currently in beta — so they cannot be cleared by upgrading
 # within the 3.14 line. See .vex/ and the README for how they are dispositioned.
-FROM python:3.14-alpine
+FROM python:3.15-alpine
 WORKDIR /app
 COPY python_loop_output.py .
 EXPOSE 8080
